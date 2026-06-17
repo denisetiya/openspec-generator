@@ -13,7 +13,7 @@ on:
         default: false
 
 permissions:
-  contents: read
+  contents: write
   id-token: write
 
 jobs:
@@ -22,7 +22,6 @@ jobs:
     runs-on: ubuntu-latest
     env:
       NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-      NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - name: Checkout
@@ -34,6 +33,7 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: 24
+          registry-url: https://registry.npmjs.org/
           cache: npm
 
       - name: Install
@@ -77,26 +77,36 @@ jobs:
           echo
           echo "✅ Dry run complete. No publish performed."
 
-      - name: Check secrets
+      - name: Configure npm auth
         if: github.event.inputs.dry_run != 'true'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          echo "=== Secret detection ==="
-          echo "NPM_TOKEN in secrets: $([ -n "${{ secrets.NPM_TOKEN }}" ] && echo 'YES (length='${#NPM_TOKEN}')' || echo 'NO')"
-          echo "NPM_TOKEN in env: ${NPM_TOKEN:+YES (length=${#NPM_TOKEN})}${NPM_TOKEN:-NO}"
-          echo "NODE_AUTH_TOKEN in env: ${NODE_AUTH_TOKEN:+YES (length=${#NODE_AUTH_TOKEN})}${NODE_AUTH_TOKEN:-NO}"
-          echo
-          if [ -z "$NPM_TOKEN" ]; then
+          echo "=== Configuring npm auth ==="
+          if [ -z "$NODE_AUTH_TOKEN" ]; then
             echo "::error::NPM_TOKEN secret is not set. Cannot publish."
             echo "::error::Add the secret in: Settings → Secrets and variables → Actions → New repository secret."
             echo "::error::Generate at https://www.npmjs.com/settings/~/tokens (Granular Access Token, publish permission)."
             echo "::error::Or run with 'dry_run: true' input to test without a token."
             exit 1
           fi
-          if [ -z "$NODE_AUTH_TOKEN" ]; then
-            echo "::error::NODE_AUTH_TOKEN is empty (npm uses this env var to authenticate)."
+          echo "Token length: ${#NODE_AUTH_TOKEN}"
+          npm config set //registry.npmjs.org/:_authToken "$NODE_AUTH_TOKEN"
+          echo "✅ Auth configured in user .npmrc"
+
+      - name: Verify npm authentication
+        if: github.event.inputs.dry_run != 'true'
+        run: |
+          echo "=== Verify authentication ==="
+          if ! WHOAMI=$(npm whoami 2>&1); then
+            echo "::error::npm whoami failed:"
+            echo "$WHOAMI"
+            echo
+            echo "::error::Token may be invalid, expired, or lack publish permission."
+            echo "::error::Verify at https://www.npmjs.com/settings/~/tokens"
             exit 1
           fi
-          echo "✅ Token detected. NPM_TOKEN + NODE_AUTH_TOKEN both set."
+          echo "✅ Authenticated as: $WHOAMI"
 
       - name: Check npm registry availability
         if: github.event.inputs.dry_run != 'true'
@@ -131,6 +141,7 @@ jobs:
       - name: Publish to npm
         if: github.event.inputs.dry_run != 'true'
         run: |
+          echo "=== Publishing ==="
           npm publish --access public --provenance
           echo "✅ Published successfully."
 
