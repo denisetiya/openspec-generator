@@ -10,8 +10,13 @@ permissions:
   pages: write
   id-token: write
 
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
 jobs:
   build:
+    name: Build Docs
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -21,22 +26,37 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
-      - name: Generate sample docs
+      - name: Generate docs site
         run: |
           mkdir -p docs-site
           node dist/cli.js scan examples --out docs-site
           node dist/cli.js readme examples/simple-api.md --out docs-site/README.md
-      - uses: actions/configure-pages@v4
-      - uses: actions/upload-pages-artifact@v3
+          echo "Docs site built. Contents:"
+          ls -la docs-site
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
         with:
+          name: docs-site
           path: docs-site
+          retention-days: 14
 
   deploy:
+    name: Deploy to GitHub Pages
     needs: build
     runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: docs-site
+          path: docs-site
+      - uses: actions/configure-pages@v4
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs-site
       - id: deployment
         uses: actions/deploy-pages@v4

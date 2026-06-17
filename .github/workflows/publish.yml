@@ -6,9 +6,10 @@ on:
       - 'v*.*.*'
   workflow_dispatch:
     inputs:
-      version:
-        description: 'Version to publish (e.g. 0.2.0). Leave empty to use package.json.'
+      dry_run:
+        description: 'Dry run only (no actual publish)'
         required: false
+        default: 'false'
 
 permissions:
   contents: read
@@ -29,7 +30,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          registry-url: https://registry.npmjs.org/
           cache: npm
 
       - name: Install
@@ -37,6 +37,9 @@ jobs:
 
       - name: Build
         run: npm run build
+
+      - name: Run tests
+        run: npm test
 
       - name: Verify version matches tag
         if: startsWith(github.ref, 'refs/tags/')
@@ -49,17 +52,28 @@ jobs:
           fi
           echo "Tag $TAG_VERSION matches package.json version."
 
+      - name: Check NPM_TOKEN is set
+        if: env.NPM_TOKEN == '' && env.NODE_AUTH_TOKEN == ''
+        run: |
+          echo "::error::Neither NPM_TOKEN nor NODE_AUTH_TOKEN secret is set. Cannot publish."
+          echo "::error::Add the secret in: Settings → Secrets and variables → Actions → New repository secret."
+          echo "::error::Generate at https://www.npmjs.com/settings/~/tokens (Granular Access Token, publish permission)."
+          exit 1
+
       - name: Check npm registry availability
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           PKG_NAME=$(node -p "require('./package.json').name")
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          echo "Checking $PKG_NAME@$PKG_VERSION on npm registry..."
+          if npm view "$PKG_NAME@$PKG_VERSION" version >/dev/null 2>&1; then
+            echo "::error::Version $PKG_VERSION already published."
+            exit 1
+          fi
           if npm view "$PKG_NAME" version >/dev/null 2>&1; then
             LATEST=$(npm view "$PKG_NAME" version)
-            CURRENT=$(node -p "require('./package.json').version")
-            if [ "$LATEST" = "$CURRENT" ]; then
-              echo "::error::Version $CURRENT already published."
-              exit 1
-            fi
-            echo "Publishing new version: $LATEST → $CURRENT"
+            echo "Latest on registry: $LATEST. Publishing: $PKG_VERSION."
           else
             echo "First-time publish for $PKG_NAME."
           fi
@@ -68,17 +82,50 @@ jobs:
         run: npm pack --dry-run
 
       - name: Publish to npm
-        run: npm publish --access public --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
+            echo "Dry run mode - skipping actual publish."
+            npm publish --dry-run
+            exit 0
+          fi
+          npm publish --access public --provenance
+          echo "Published successfully."
 
       - name: Verify published version
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          sleep 5
-          PKG_NAME=$(node -p "require('./package.json').version" | head -c 5)
           PKG_NAME=$(node -p "require('./package.json').name")
-          PUBLISHED=$(npm view "$PKG_NAME" version)
-          echo "Published version: $PUBLISHED"
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          echo "Waiting for registry to propagate..."
+          for i in 1 2 3 4 5 6; do
+            sleep 5
+            if PUBLISHED=$(npm view "$PKG_NAME@$PKG_VERSION" version 2>/dev/null); then
+              echo "✅ Verified: $PKG_NAME@$PUBLISHED is now on npm registry."
+              exit 0
+            fi
+            echo "Retry $i: not yet visible, waiting..."
+          done
+          echo "::error::Version $PKG_VERSION not visible on registry after 30s. Check https://www.npmjs.com/package/$PKG_NAME"
+          exit 1
+
+      - name: Smoke test published package
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          PKG_NAME=$(node -p "require('./package.json').name")
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          echo "Installing $PKG_NAME@$PKG_VERSION from registry..."
+          cd /tmp
+          rm -rf test-pkg
+          mkdir test-pkg && cd test-pkg
+          npm init -y >/dev/null 2>&1
+          npm install "$PKG_NAME@$PKG_VERSION" --no-audit --no-fund
+          echo "Testing CLI:"
+          npx --no-install openspec-generator --version
+          npx --no-install openspec-generator --help | head -5
 
       - name: Create GitHub release
         if: startsWith(github.ref, 'refs/tags/')
