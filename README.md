@@ -211,39 +211,6 @@ Workflows in `.github/workflows/`:
 | `docs.yml` | push main | Build dashboard + README, deploy to GitHub Pages. |
 | `smoke.yml` | push, PR | Start mock server, hit endpoints with curl, verify JSON responses. |
 
-### Setup (one-time)
-
-1. **npm token** (https://www.npmjs.com/settings/~/tokens):
-   - Generate new token → Granular Access Token
-   - Enable: "Publish" + "Read packages"
-   - Add to GitHub: Settings → Secrets → `NPM_TOKEN`
-
-2. **GitHub Pages** (optional, for docs deploy):
-   - Settings → Pages → Source: GitHub Actions
-
-### Release flow
-
-```bash
-# 1. Bump version
-npm version patch   # 0.2.0 → 0.2.1
-# or
-npm version minor   # 0.2.0 → 0.3.0
-
-# 2. Push commit + tag
-git push && git push --tags
-
-# 3. CI runs:
-#    - ci.yml: validates build
-#    - publish.yml: publishes to npm, creates release
-#    - docs.yml: redeploys dashboard
-
-# 4. Verify
-npm view openspec-generator
-```
-
-### Manual publish (no tag)
-
-GitHub → Actions → Publish to npm → Run workflow → enter version or leave empty to use package.json.
 
 ### Local CI parity
 
