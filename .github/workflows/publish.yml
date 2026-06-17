@@ -22,7 +22,8 @@ jobs:
     runs-on: ubuntu-latest
     env:
       NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-      NODE_AUTH_TOKEN: ${{ secrets.NODE_AUTH_TOKEN }}
+      NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -81,18 +82,21 @@ jobs:
         run: |
           echo "=== Secret detection ==="
           echo "NPM_TOKEN in secrets: $([ -n "${{ secrets.NPM_TOKEN }}" ] && echo 'YES (length='${#NPM_TOKEN}')' || echo 'NO')"
-          echo "NODE_AUTH_TOKEN in secrets: $([ -n "${{ secrets.NODE_AUTH_TOKEN }}" ] && echo 'YES (length='${#NODE_AUTH_TOKEN}')' || echo 'NO')"
           echo "NPM_TOKEN in env: ${NPM_TOKEN:+YES (length=${#NPM_TOKEN})}${NPM_TOKEN:-NO}"
           echo "NODE_AUTH_TOKEN in env: ${NODE_AUTH_TOKEN:+YES (length=${#NODE_AUTH_TOKEN})}${NODE_AUTH_TOKEN:-NO}"
           echo
-          if [ -z "$NPM_TOKEN" ] && [ -z "$NODE_AUTH_TOKEN" ]; then
-            echo "::error::Neither NPM_TOKEN nor NODE_AUTH_TOKEN secret is set. Cannot publish."
+          if [ -z "$NPM_TOKEN" ]; then
+            echo "::error::NPM_TOKEN secret is not set. Cannot publish."
             echo "::error::Add the secret in: Settings → Secrets and variables → Actions → New repository secret."
             echo "::error::Generate at https://www.npmjs.com/settings/~/tokens (Granular Access Token, publish permission)."
             echo "::error::Or run with 'dry_run: true' input to test without a token."
             exit 1
           fi
-          echo "✅ Token detected."
+          if [ -z "$NODE_AUTH_TOKEN" ]; then
+            echo "::error::NODE_AUTH_TOKEN is empty (npm uses this env var to authenticate)."
+            exit 1
+          fi
+          echo "✅ Token detected. NPM_TOKEN + NODE_AUTH_TOKEN both set."
 
       - name: Check npm registry availability
         if: github.event.inputs.dry_run != 'true'
