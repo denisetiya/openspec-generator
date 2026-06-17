@@ -20,6 +20,9 @@ jobs:
   publish:
     name: Publish
     runs-on: ubuntu-latest
+    env:
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+      NODE_AUTH_TOKEN: ${{ secrets.NODE_AUTH_TOKEN }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -73,19 +76,26 @@ jobs:
           echo
           echo "✅ Dry run complete. No publish performed."
 
-      - name: Check NPM_TOKEN
-        if: github.event.inputs.dry_run != 'true' && env.NPM_TOKEN == '' && env.NODE_AUTH_TOKEN == ''
+      - name: Check secrets
+        if: github.event.inputs.dry_run != 'true'
         run: |
-          echo "::error::Neither NPM_TOKEN nor NODE_AUTH_TOKEN secret is set. Cannot publish."
-          echo "::error::Add the secret in: Settings → Secrets and variables → Actions → New repository secret."
-          echo "::error::Generate at https://www.npmjs.com/settings/~/tokens (Granular Access Token, publish permission)."
-          echo "::error::Or run with 'dry_run: true' input to test without a token."
-          exit 1
+          echo "=== Secret detection ==="
+          echo "NPM_TOKEN in secrets: $([ -n "${{ secrets.NPM_TOKEN }}" ] && echo 'YES (length='${#NPM_TOKEN}')' || echo 'NO')"
+          echo "NODE_AUTH_TOKEN in secrets: $([ -n "${{ secrets.NODE_AUTH_TOKEN }}" ] && echo 'YES (length='${#NODE_AUTH_TOKEN}')' || echo 'NO')"
+          echo "NPM_TOKEN in env: ${NPM_TOKEN:+YES (length=${#NPM_TOKEN})}${NPM_TOKEN:-NO}"
+          echo "NODE_AUTH_TOKEN in env: ${NODE_AUTH_TOKEN:+YES (length=${#NODE_AUTH_TOKEN})}${NODE_AUTH_TOKEN:-NO}"
+          echo
+          if [ -z "$NPM_TOKEN" ] && [ -z "$NODE_AUTH_TOKEN" ]; then
+            echo "::error::Neither NPM_TOKEN nor NODE_AUTH_TOKEN secret is set. Cannot publish."
+            echo "::error::Add the secret in: Settings → Secrets and variables → Actions → New repository secret."
+            echo "::error::Generate at https://www.npmjs.com/settings/~/tokens (Granular Access Token, publish permission)."
+            echo "::error::Or run with 'dry_run: true' input to test without a token."
+            exit 1
+          fi
+          echo "✅ Token detected."
 
       - name: Check npm registry availability
         if: github.event.inputs.dry_run != 'true'
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           PKG_NAME=$(node -p "require('./package.json').name")
           PKG_VERSION=$(node -p "require('./package.json').version")
@@ -107,16 +117,12 @@ jobs:
 
       - name: Publish to npm
         if: github.event.inputs.dry_run != 'true'
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           npm publish --access public --provenance
           echo "✅ Published successfully."
 
       - name: Verify published version
         if: github.event.inputs.dry_run != 'true'
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           PKG_NAME=$(node -p "require('./package.json').name")
           PKG_VERSION=$(node -p "require('./package.json').version")
@@ -134,8 +140,6 @@ jobs:
 
       - name: Smoke test published package
         if: github.event.inputs.dry_run != 'true'
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           PKG_NAME=$(node -p "require('./package.json').name")
           PKG_VERSION=$(node -p "require('./package.json').version")
