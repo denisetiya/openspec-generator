@@ -7,9 +7,10 @@ on:
   workflow_dispatch:
     inputs:
       dry_run:
-        description: 'Dry run only (no actual publish)'
+        description: 'Dry run only (build + pack + test, no publish, no token required)'
+        type: boolean
         required: false
-        default: 'false'
+        default: false
 
 permissions:
   contents: read
@@ -19,7 +20,6 @@ jobs:
   publish:
     name: Publish
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -41,6 +41,13 @@ jobs:
       - name: Run tests
         run: npm test
 
+      - name: Lint
+        run: npm run lint
+
+      - name: Show package info
+        run: |
+          node -p "const p = require('./package.json'); \`Name: \${p.name}\nVersion: \${p.version}\nFiles: \${p.files?.join(', ') || 'all'}\nBin: \${JSON.stringify(p.bin)}\nEngines: \${JSON.stringify(p.engines)}\`"
+
       - name: Verify version matches tag
         if: startsWith(github.ref, 'refs/tags/')
         run: |
@@ -50,17 +57,33 @@ jobs:
             echo "::error::Tag version ($TAG_VERSION) does not match package.json ($PKG_VERSION)."
             exit 1
           fi
-          echo "Tag $TAG_VERSION matches package.json version."
+          echo "✅ Tag $TAG_VERSION matches package.json version."
 
-      - name: Check NPM_TOKEN is set
-        if: env.NPM_TOKEN == '' && env.NODE_AUTH_TOKEN == ''
+      - name: "Dry run pack"
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.dry_run == 'true'
+        run: |
+          echo "=== DRY RUN MODE ==="
+          echo "No publish, no token required."
+          echo
+          echo "--- npm pack dry-run ---"
+          npm pack --dry-run
+          echo
+          echo "--- Files that will be published ---"
+          npm pack --dry-run --json 2>/dev/null | node -e "let d=''; process.stdin.on('data',c=>d+=c); process.stdin.on('end',()=>{ try{ JSON.parse(d).forEach(f=>console.log('  '+f.filename+' ('+f.size+' bytes)')); }catch{} });" || true
+          echo
+          echo "✅ Dry run complete. No publish performed."
+
+      - name: Check NPM_TOKEN
+        if: github.event.inputs.dry_run != 'true' && env.NPM_TOKEN == '' && env.NODE_AUTH_TOKEN == ''
         run: |
           echo "::error::Neither NPM_TOKEN nor NODE_AUTH_TOKEN secret is set. Cannot publish."
           echo "::error::Add the secret in: Settings → Secrets and variables → Actions → New repository secret."
           echo "::error::Generate at https://www.npmjs.com/settings/~/tokens (Granular Access Token, publish permission)."
+          echo "::error::Or run with 'dry_run: true' input to test without a token."
           exit 1
 
       - name: Check npm registry availability
+        if: github.event.inputs.dry_run != 'true'
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
@@ -79,21 +102,19 @@ jobs:
           fi
 
       - name: Verify package contents
+        if: github.event.inputs.dry_run != 'true'
         run: npm pack --dry-run
 
       - name: Publish to npm
+        if: github.event.inputs.dry_run != 'true'
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
-            echo "Dry run mode - skipping actual publish."
-            npm publish --dry-run
-            exit 0
-          fi
           npm publish --access public --provenance
-          echo "Published successfully."
+          echo "✅ Published successfully."
 
       - name: Verify published version
+        if: github.event.inputs.dry_run != 'true'
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
@@ -112,6 +133,7 @@ jobs:
           exit 1
 
       - name: Smoke test published package
+        if: github.event.inputs.dry_run != 'true'
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
@@ -128,7 +150,7 @@ jobs:
           npx --no-install openspec-generator --help | head -5
 
       - name: Create GitHub release
-        if: startsWith(github.ref, 'refs/tags/')
+        if: github.event.inputs.dry_run != 'true' && startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v3
         with:
           generate_release_notes: true

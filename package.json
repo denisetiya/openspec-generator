@@ -30,6 +30,8 @@
     "dev": "tsx src/cli.ts examples/simple-api.md --out output",
     "sample": "npm run build && node dist/cli.js scan examples --out output",
     "test": "node scripts/smoke.mjs",
+    "publish:dry": "PUBLISH_DRY_RUN=true node scripts/smoke.mjs",
+    "publish:check": "npm run build && npm test && npm run lint && npm pack --dry-run",
     "test:all": "npm run build && node dist/cli.js lint examples/simple-api.md && node dist/cli.js validate examples/simple-api.md && npm test",
     "lint": "node dist/cli.js lint examples/simple-api.md",
     "prepublishOnly": "npm run build && npm test"
