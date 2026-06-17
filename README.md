@@ -206,7 +206,7 @@ Workflows in `.github/workflows/`:
 
 | File | Trigger | Purpose |
 | --- | --- | --- |
-| `ci.yml` | push, PR | Build, type-check, lint, validate, test all commands, verify dashboard integrity, upload artifacts. Runs on Node 20 + 22. |
+| `ci.yml` | push, PR | Build, type-check, lint, validate, test all commands, verify dashboard integrity, upload artifacts. Runs on Node 22 + 24. |
 | `publish.yml` | tag `v*.*.*`, manual | Verify version, check registry conflict, publish to npm with provenance, create GitHub release. |
 | `docs.yml` | push main | Build dashboard + README, deploy to GitHub Pages. |
 | `smoke.yml` | push, PR | Start mock server, hit endpoints with curl, verify JSON responses. |
