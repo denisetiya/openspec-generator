@@ -1,0 +1,44 @@
+name: Mock Server Smoke Test
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Start mock server
+        run: |
+          node dist/cli.js mock examples/simple-api.md --port 3001 --cors '*' &
+          MOCK_PID=$!
+          sleep 2
+      - name: Test endpoints
+        run: |
+          set -e
+          echo "--- GET /auth/register ---"
+          curl -fsS -X POST -H "Content-Type: application/json" -d '{}' http://localhost:3001/auth/register | head -5
+          echo
+          echo "--- GET /users/me ---"
+          curl -fsS http://localhost:3001/users/me | head -5
+          echo
+          echo "--- Spec ---"
+          curl -fsS http://localhost:3001/_spec | head -5
+          echo
+          echo "--- OpenAPI ---"
+          curl -fsS http://localhost:3001/openapi.yaml | head -5
+      - name: Stop server
+        run: |
+          pkill -f "node dist/cli.js mock" || true

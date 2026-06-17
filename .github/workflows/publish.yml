@@ -1,0 +1,89 @@
+name: Publish to npm
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to publish (e.g. 0.2.0). Leave empty to use package.json.'
+        required: false
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    name: Publish
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org/
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Verify version matches tag
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          TAG_VERSION=${GITHUB_REF#refs/tags/v}
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
+            echo "::error::Tag version ($TAG_VERSION) does not match package.json ($PKG_VERSION)."
+            exit 1
+          fi
+          echo "Tag $TAG_VERSION matches package.json version."
+
+      - name: Check npm registry availability
+        run: |
+          PKG_NAME=$(node -p "require('./package.json').name")
+          if npm view "$PKG_NAME" version >/dev/null 2>&1; then
+            LATEST=$(npm view "$PKG_NAME" version)
+            CURRENT=$(node -p "require('./package.json').version")
+            if [ "$LATEST" = "$CURRENT" ]; then
+              echo "::error::Version $CURRENT already published."
+              exit 1
+            fi
+            echo "Publishing new version: $LATEST → $CURRENT"
+          else
+            echo "First-time publish for $PKG_NAME."
+          fi
+
+      - name: Verify package contents
+        run: npm pack --dry-run
+
+      - name: Publish to npm
+        run: npm publish --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Verify published version
+        run: |
+          sleep 5
+          PKG_NAME=$(node -p "require('./package.json').version" | head -c 5)
+          PKG_NAME=$(node -p "require('./package.json').name")
+          PUBLISHED=$(npm view "$PKG_NAME" version)
+          echo "Published version: $PUBLISHED"
+
+      - name: Create GitHub release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

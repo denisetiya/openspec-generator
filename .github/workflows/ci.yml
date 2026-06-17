@@ -1,0 +1,115 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master, develop]
+  pull_request:
+    branches: [main, master, develop]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build & Test (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [20, 22]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node ${{ matrix.node }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Type check
+        run: npx tsc --noEmit
+
+      - name: Build
+        run: npm run build
+
+      - name: Lint DSL
+        run: node dist/cli.js lint examples/simple-api.md
+
+      - name: Validate sample
+        run: node dist/cli.js validate examples/simple-api.md
+
+      - name: Generate sample outputs
+        run: |
+          mkdir -p .ci-output
+          node dist/cli.js scan examples --out .ci-output
+          test -f .ci-output/openapi.yaml
+          test -f .ci-output/dashboard.html
+          test -f .ci-output/api-docs.md
+          test -f .ci-output/ai-report.md
+
+      - name: Test all commands
+        run: |
+          set -e
+          node dist/cli.js version
+          node dist/cli.js help > /dev/null
+          node dist/cli.js generate examples/simple-api.md --out .ci-output-2
+          node dist/cli.js format examples/simple-api.md > /dev/null
+          node dist/cli.js lint examples/simple-api.md --out .ci-output/lint.md
+          node dist/cli.js export-curl examples/simple-api.md --out .ci-output/curl.sh
+          node dist/cli.js export-postman examples/simple-api.md --out .ci-output/postman.json
+          node dist/cli.js export-insomnia examples/simple-api.md --out .ci-output/insomnia.json
+          node dist/cli.js readme examples/simple-api.md --out .ci-output/README.md
+          node dist/cli.js sdk examples/simple-api.md --out .ci-output/sdk.ts
+          node dist/cli.js diff examples/simple-api.md examples/simple-api.md --out .ci-output/diff.md
+          node dist/cli.js breaking examples/simple-api.md examples/simple-api.md
+          node dist/cli.js hit POST /auth/register
+          node dist/cli.js coverage examples/simple-api.md --out .ci-output/coverage.md
+          node dist/cli.js changelog examples/simple-api.md examples/simple-api.md --version 1.1.0 --from 1.0.0 --out .ci-output/CHANGELOG.md
+          echo "All commands passed."
+
+      - name: Verify generated dashboard
+        run: |
+          test -f .ci-output/dashboard.html
+          grep -q "class=\"pane" .ci-output/dashboard.html
+          grep -q "function showTab" .ci-output/dashboard.html
+          grep -q "function doSearch" .ci-output/dashboard.html
+          grep -q "function filterByTag" .ci-output/dashboard.html
+          echo "Dashboard integrity OK."
+
+      - name: Upload CI artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-output-node-${{ matrix.node }}
+          path: |
+            .ci-output
+            .ci-output-2
+          retention-days: 7
+
+  diff:
+    name: Diff vs main
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Compare DSL against main
+        run: |
+          git fetch origin main || git fetch origin master || true
+          BASE=origin/main
+          git rev-parse $BASE >/dev/null 2>&1 || BASE=origin/master
+          git rev-parse $BASE >/dev/null 2>&1 || { echo "No base ref, skipping."; exit 0; }
+          node dist/cli.js diff $BASE examples/simple-api.md --out .ci-output/diff.md || true
+          echo "Diff report:"
+          cat .ci-output/diff.md | head -40

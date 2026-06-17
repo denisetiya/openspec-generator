@@ -1,0 +1,7 @@
+{
+  "schemaFile": "api.md",
+  "schemaDir": "schemas",
+  "output": "docs/api",
+  "watch": true,
+  "port": 4321
+}

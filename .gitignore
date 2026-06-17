@@ -1,0 +1,12 @@
+node_modules/
+dist/
+output/
+*.log
+.DS_Store
+.env
+.env.local
+.openspec-coverage.json
+.ci-output/
+.ci-output-2/
+docs-site/
+*.tsbuildinfo

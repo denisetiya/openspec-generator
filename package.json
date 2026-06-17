@@ -1,0 +1,53 @@
+{
+  "name": "openspec-generator",
+  "version": "0.2.0",
+  "description": "AI-friendly Markdown DSL → OpenAPI 3.1 + readable docs + HTML dashboard + Try It + mock server + SDK + export + diff + lint + coverage.",
+  "type": "module",
+  "bin": {
+    "openspec-generator": "dist/cli.js"
+  },
+  "main": "dist/cli.js",
+  "files": [
+    "dist",
+    "README.md",
+    "prompts",
+    "examples"
+  ],
+  "keywords": [
+    "openapi",
+    "api-documentation",
+    "ai",
+    "markdown",
+    "spec",
+    "generator",
+    "postman",
+    "swagger",
+    "redoc",
+    "tryit"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/cli.ts examples/simple-api.md --out output",
+    "sample": "npm run build && node dist/cli.js scan examples --out output",
+    "test": "node scripts/smoke.mjs",
+    "test:all": "npm run build && node dist/cli.js lint examples/simple-api.md && node dist/cli.js validate examples/simple-api.md && npm test",
+    "lint": "node dist/cli.js lint examples/simple-api.md",
+    "prepublishOnly": "npm run build && npm test"
+  },
+  "dependencies": {
+    "yaml": "^2.8.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.3",
+    "tsx": "^4.20.3",
+    "typescript": "^5.8.3"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/denisetiya/openspec-generator.git"
+  }
+}
