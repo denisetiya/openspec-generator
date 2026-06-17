@@ -8,6 +8,10 @@ if (!existsSync("dist/cli.js")) throw new Error("dist/cli.js missing");
 const v = execSync("node dist/cli.js version", { encoding: "utf8" }).trim();
 if (!/^\d+\.\d+\.\d+$/.test(v)) throw new Error("version invalid: " + v);
 
+if (v !== readFileSync("package.json", "utf8").match(/"version":\s*"([^"]+)"/)[1]) {
+  throw new Error(`CLI version ${v} does not match package.json`);
+}
+
 const pkg = JSON.parse(readFileSync("package.json", "utf8"));
 
 if (process.env.PUBLISH_DRY_RUN === "true" || process.argv.includes("--dry-run")) {

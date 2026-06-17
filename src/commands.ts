@@ -1,5 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { readFileSync } from "node:fs";
 import { extname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import YAML from "yaml";
 import { loadConfig, resolveInputs, resolveOutput, type OpenSpecConfig } from "./config.js";
 import { diffSpecs, formatDiffReport, isBreaking, loadSpec } from "./diff.js";
@@ -361,7 +363,7 @@ function optionValue(args: string[], flag: string): string | null {
 }
 
 function help(): string {
-  return `OpenSpec Generator CLI v0.2.0
+  return `OpenSpec Generator CLI v${version()}
 
 AI-friendly Markdown DSL → OpenAPI 3.1 + readable docs + HTML dashboard + Try It.
 
@@ -415,6 +417,20 @@ Config (.openspecrc.json):
 `;
 }
 
-function version(): string { return "0.2.0"; }
+let _pkgVersion: string | undefined;
+function pkgVersion(): string {
+  if (_pkgVersion !== undefined) return _pkgVersion;
+  try {
+    const here = (import.meta as { dirname?: string }).dirname ?? extname(fileURLToPath(import.meta.url));
+    const pkgPath = resolve(here, "..", "package.json");
+    const pkg = JSON.parse(readFileSync(pkgPath, "utf8")) as { version?: string };
+    _pkgVersion = pkg.version ?? "0.0.0";
+  } catch (err) {
+    if (process.env.OPENSPEC_DEBUG) console.error("pkgVersion error:", err);
+    _pkgVersion = "0.0.0";
+  }
+  return _pkgVersion;
+}
+function version(): string { return pkgVersion(); }
 
 export function cliName(): string { return "openspec-generator"; }
