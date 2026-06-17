@@ -26,7 +26,7 @@ jobs:
           mkdir -p docs-site
           node dist/cli.js scan examples --out docs-site
           node dist/cli.js readme examples/simple-api.md --out docs-site/README.md
-      - uses: actions/configure-pages@v5
+      - uses: actions/configure-pages@v4
       - uses: actions/upload-pages-artifact@v3
         with:
           path: docs-site
